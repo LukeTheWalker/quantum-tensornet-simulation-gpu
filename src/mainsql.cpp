@@ -6,24 +6,13 @@
 #include <chrono>
 
 #include "qTensor.hpp"
+#include "Contraction.hpp"
 
 #ifdef ENABLE_CUDA
 #include "qTensorCUDA.cuh"
 #endif
 
 using namespace std;
-
-struct Contraction {
-    int id;
-    int programId;
-    std::vector<int> span;
-    int leftId;
-    int rightId;
-    Contraction* left;
-    Contraction* right;
-    std::string kind;
-    QTensor data;
-};
 
 bool retrieveData(sqlite3* db, std::vector<Contraction>& contractions, int programId) {
     sqlite3_stmt* stmt;
@@ -50,7 +39,7 @@ bool retrieveData(sqlite3* db, std::vector<Contraction>& contractions, int progr
         size_t pos = 0;
 
         // TODO : ------------------------------------------------------ fix implicitly tensor expanded gates
-        auto span = std::vector<int>();
+        auto span = std::vector<unsigned char>();
         while ((pos = span_str.find(',')) != string::npos) {
             span.push_back(stoi(span_str.substr(0, pos)));
             span_str.erase(0, pos + 1);
@@ -58,7 +47,7 @@ bool retrieveData(sqlite3* db, std::vector<Contraction>& contractions, int progr
         span.push_back(stoi(span_str));
         auto start = span[0];
         auto end = span[span.size() - 1];
-        for (int i = start; i <= end; i++) contraction.span.push_back(i);
+        for (unsigned char i = start; i <= end; i++) contraction.span.push_back(i);
         // TODO : ------------------------------------------------------ fix implicitly tensor expanded gates
 
         contraction.leftId = sqlite3_column_int(stmt, 3);
@@ -101,10 +90,10 @@ bool retrieveData(sqlite3* db, std::vector<Contraction>& contractions, int progr
     return true;
 }
 
-ostream& operator<<(ostream& os, const vector<int>& span) {
+ostream& operator<<(ostream& os, const vector<unsigned char>& span) {
     os << "[";
     for (size_t i = 0; i < span.size(); ++i) {
-        os << span[i];
+        os << (int)span[i];
         if (i < span.size() - 1) {
             os << ", ";
         }
@@ -201,7 +190,11 @@ int main(int argc, char** argv) {
 
     Contraction* root = contractions.empty() ? nullptr : &contractions.back();
     chrono::steady_clock::time_point begin = chrono::steady_clock::now();
+    #ifdef ENABLE_CUDA
+    contractTreeGPU(root);
+    #else
     contractTree(root);
+    #endif
     chrono::steady_clock::time_point end = chrono::steady_clock::now();
     cout << "Time difference = " << (double)chrono::duration_cast<chrono::microseconds>(end - begin).count() / 1000. << "[ms]" << endl;
     if (DEBUG){

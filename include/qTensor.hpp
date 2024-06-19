@@ -11,12 +11,12 @@
 class QTensor
 {
     public:
-        std::set<int> span;
+        std::set<unsigned char> span;
         std::vector<std::complex<float> > values;
         QTensor() {}
-        QTensor(std::set<int> span): span(span){this->rank = span.size();}
+        QTensor(std::set<unsigned char> span): span(span){this->rank = span.size();}
         template <typename T>
-        QTensor(std::vector<T> values, std::vector<int> span_) : span(span_.begin(), span_.end())
+        QTensor(std::vector<T> values, std::vector<unsigned char> span_) : span(span_.begin(), span_.end())
         {
             rank = span.size();
             for (int i = 0 ; i < values.size(); i+=2)
@@ -30,6 +30,7 @@ class QTensor
             if (values.size() != std::pow(2, rank*2))
             {
                 std::cerr << "Error: the number of values is not consistent with the rank of the tensor" << std::endl;
+                exit(1);
             }else{
                 for (int i = 0 ; i < values.size(); i++)
                 {
@@ -70,7 +71,7 @@ class QTensor
                 }
             };
 
-            auto getIndexInSet = [](std::set<int> set, int element) {
+            auto getIndexInSet = [](std::set<unsigned char> set, unsigned char element) {
                 int index = 0;
                 for (auto it = set.begin(); it != set.end(); ++it) {
                     if (*it == element) {
@@ -78,11 +79,11 @@ class QTensor
                     }
                     index++;
                 }
-                return -1; // Element not found in the set
+                return 255; // Element not found in the set
             };
 
-            auto findCommonValues = [](std::set<int> set1, std::set<int> set2) -> std::vector<int> {
-                std::vector<int> commonValues;
+            auto findCommonValues = [](std::set<unsigned char> set1, std::set<unsigned char> set2) -> std::vector<unsigned char> {
+                std::vector<unsigned char> commonValues;
                 for (auto value : set1) {
                     if (set2.find(value) != set2.end()) {
                         commonValues.push_back(value);
@@ -101,13 +102,13 @@ class QTensor
             };
 
 
-            std::set<int> newSpan;
+            std::set<unsigned char> newSpan;
             newSpan.insert(A.span.begin(), A.span.end());
             newSpan.insert(B.span.begin(), B.span.end());
             QTensor result = QTensor(newSpan);
             std::vector<std::complex<float>> resultValues(1 << (result.rank*2), {0.0, 0.0});
 
-            std::vector<int> connections = findCommonValues(A.span, B.span);
+            std::vector<unsigned char> connections = findCommonValues(A.span, B.span);
 
             #pragma omp parallel for
             for (int i = 0; i < (1 << (result.rank*2)); i++)
@@ -135,10 +136,10 @@ class QTensor
                     int indexA = getIndexInSet(A.span, *lane);
                     int indexB = getIndexInSet(B.span, *lane);
 
-                    if (indexA != -1) row_a[indexA] = row_res[k];
+                    if (indexA != 255) row_a[indexA] = row_res[k];
                     else              row_b[indexB] = row_res[k];
 
-                    if (indexB != -1) col_b[indexB] = col_res[k];
+                    if (indexB != 255) col_b[indexB] = col_res[k];
                     else              col_a[indexA] = col_res[k];
 
                     lane++;
