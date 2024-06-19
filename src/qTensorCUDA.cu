@@ -201,17 +201,12 @@ gpuQtensor moveQtensorToGPU (Contraction* contraction) {
     return gpuA;
 }
 
-Contraction* super_root = nullptr;
-
-auto contractTreeGPU(Contraction* root) -> void {
-    if (super_root == nullptr) {
-        super_root = root;
-    }
+auto contractTreeGPU_r(Contraction* root) -> void {
     if (root == nullptr)
         return;
     if (root->kind == "C") {
-        contractTreeGPU(root->left);
-        contractTreeGPU(root->right);
+        contractTreeGPU_r(root->left);
+        contractTreeGPU_r(root->right);
 
         if (root->left->kind == "G") 
             gpuQtensorMap[root->left] = moveQtensorToGPU(root->left);
@@ -258,16 +253,18 @@ auto contractTreeGPU(Contraction* root) -> void {
             err = cudaFree(gpuQtensorMap[root->right].values); cuda_err_check(err, __FILE__, __LINE__);
         }
     }
+}
 
-    if (root == super_root) {
-        cudaError_t err;
-        std::vector<std::complex<float>> resultValues(1 << (root->span.size()*2));
-        err = cudaMemcpy(resultValues.data(), gpuQtensorMap[root].values, resultValues.size() * sizeof(cpx), cudaMemcpyDeviceToHost); cuda_err_check(err, __FILE__, __LINE__);
-        root->data = QTensor();
-        root->data.rank = root->span.size();
-        root->data.setValues(resultValues);
+auto contractTreeGPU(Contraction* root) -> void {
+    contractTreeGPU_r(root);
 
-        err = cudaFree(gpuQtensorMap[root].span); cuda_err_check(err, __FILE__, __LINE__);
-        err = cudaFree(gpuQtensorMap[root].values); cuda_err_check(err, __FILE__, __LINE__);
-    }
+    cudaError_t err;
+    std::vector<std::complex<float>> resultValues(1 << (root->span.size()*2));
+    err = cudaMemcpy(resultValues.data(), gpuQtensorMap[root].values, resultValues.size() * sizeof(cpx), cudaMemcpyDeviceToHost); cuda_err_check(err, __FILE__, __LINE__);
+    root->data = QTensor();
+    root->data.rank = root->span.size();
+    root->data.setValues(resultValues);
+
+    err = cudaFree(gpuQtensorMap[root].span); cuda_err_check(err, __FILE__, __LINE__);
+    err = cudaFree(gpuQtensorMap[root].values); cuda_err_check(err, __FILE__, __LINE__);
 }

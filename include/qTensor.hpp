@@ -1,12 +1,12 @@
 #pragma once
 #include <iostream>
 #include <vector>
-#include <bitset>
 #include <cmath>
 #include <algorithm>
 #include <complex>
 #include <set>
 #include <array>
+#include "bitset.hpp"
 
 class QTensor
 {
@@ -43,34 +43,6 @@ class QTensor
 
         static QTensor contraction(QTensor A, QTensor B) 
         {
-            auto keepNtoMbits = [](std::bitset<64>& bits, int n, int m) {
-                for (int i = 0; i < 64; i++) {
-                    if(i<n||i>=m)
-                    bits.reset(i);
-                }
-            };
-
-            auto shiftBitsDx = [](std::bitset<64>& bits, int x) 
-            { 
-                for (int i = 0; i < 64; i++) 
-                { 
-                    if(i+x > 63)
-                    {
-                        return;
-                    }
-                    bits[i] = bits[i+x];
-                    bits[i+x] = 0;
-                }  
-            };
-
-            auto swapFirstNBits = [](std::bitset<64>& bits, size_t n) {
-                for (size_t i = 0; i < n / 2; ++i) {
-                    bool temp = bits[i];
-                    bits[i] = bits[n - i - 1];
-                    bits[n - i - 1] = temp;
-                }
-            };
-
             auto getIndexInSet = [](std::set<unsigned char> set, unsigned char element) {
                 int index = 0;
                 for (auto it = set.begin(); it != set.end(); ++it) {
@@ -92,16 +64,6 @@ class QTensor
                 return commonValues;
             };
 
-            auto shiftBitsSx = [](std::bitset<64>& bits, int x) 
-            { 
-                for (int i = 63; i >= x; i--) 
-                { 
-                    bits[i] = bits[i-x];
-                    bits[i-x] = 0;
-                }  
-            };
-
-
             std::set<unsigned char> newSpan;
             newSpan.insert(A.span.begin(), A.span.end());
             newSpan.insert(B.span.begin(), B.span.end());
@@ -113,61 +75,40 @@ class QTensor
             #pragma omp parallel for
             for (int i = 0; i < (1 << (result.rank*2)); i++)
             {   
-                std::bitset<64> bits(i);
+                cpu_classes::bitset bits(i);
 
-                std::bitset<64> row_res = bits;
-                keepNtoMbits(row_res, result.rank, 2*result.rank);
-                shiftBitsDx(row_res, result.rank);
-                swapFirstNBits(row_res, result.rank);
-
-                std::bitset<64> col_res = bits;
-                keepNtoMbits(col_res, 0, result.rank);
-                swapFirstNBits(col_res, result.rank);
-            
-                std::bitset<64> row_a(0);
-                std::bitset<64> col_a(0);
-
-                std::bitset<64> row_b(0);
-                std::bitset<64> col_b(0);
+                cpu_classes::bitset a(0);
+                cpu_classes::bitset b(0);
 
                 auto lane = newSpan.begin();
-                for (int k = 0 ; k < newSpan.size(); k++)
+                for (int k = 0 ; k < result.rank; k++)
                 {
                     int indexA = getIndexInSet(A.span, *lane);
                     int indexB = getIndexInSet(B.span, *lane);
 
-                    if (indexA != 255) row_a[indexA] = row_res[k];
-                    else              row_b[indexB] = row_res[k];
+                    if (indexA != 255) a.set(2*A.rank - indexA - 1, bits.get(result.rank*2 - 1 - k));
+                    else               b.set(2*B.rank - indexB - 1, bits.get(result.rank*2 - 1 - k));
 
-                    if (indexB != 255) col_b[indexB] = col_res[k];
-                    else              col_a[indexA] = col_res[k];
+                    if (indexB != 255) b.set(B.rank - indexB - 1, bits.get(result.rank - 1 - k));
+                    else               a.set(A.rank - indexA - 1, bits.get(result.rank - 1 - k));
 
                     lane++;
                 }
+
                 for (int m = 0; m < (1 << connections.size()); m++)
                 {
-                    std::bitset<64> address_vacant(m);
+                    cpu_classes::bitset address_vacant(m);
                     int cnt = 0;
-                    for (auto& c: connections)
+                    for (int c = 0; c < connections.size(); c++)
                     {
-                        col_a[getIndexInSet(A.span, c)] = address_vacant[cnt];
-                        row_b[getIndexInSet(B.span, c)] = address_vacant[cnt];
+                        unsigned char indexA = getIndexInSet(A.span, connections[c]);
+                        unsigned char indexB = getIndexInSet(B.span, connections[c]);
+                        a.set(A.rank - indexA - 1, address_vacant.get(cnt));
+                        b.set(2*B.rank - indexB - 1, address_vacant.get(cnt));
                         cnt++;
                     }
-                    
-                    std::array<std::bitset<64>, 4> indexes = {row_a, col_a, row_b, col_b};
-                    swapFirstNBits(indexes[0], A.rank);
-                    swapFirstNBits(indexes[1], A.rank);
-                    swapFirstNBits(indexes[2], B.rank);
-                    swapFirstNBits(indexes[3], B.rank);
-                    
-                    shiftBitsSx(indexes[0], A.rank);
-                    shiftBitsSx(indexes[2], B.rank);
-                    
-                    std::bitset<64> indexA = indexes[0] | indexes[1];
-                    std::bitset<64> indexB = indexes[2] | indexes[3];
 
-                    resultValues.at(i) += A.getValue(indexA.to_ulong()) * B.getValue(indexB.to_ulong());
+                    resultValues.at(i) += A.getValue(a.to_ulong()) * B.getValue(b.to_ulong());
                 }
             }
             result.setValues(resultValues);
