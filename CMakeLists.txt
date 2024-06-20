@@ -50,3 +50,9 @@ if (ENABLE_CUDA)
     set_target_properties(CuContraction PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
     set_target_properties(CuContraction PROPERTIES CUDA_ARCHITECTURES 80)
 endif()
+
+# Find OpenMP
+find_package(OpenMP REQUIRED)
+if (OpenMP_CXX_FOUND)
+    target_link_libraries(CuContraction PRIVATE OpenMP::OpenMP_CXX)
+endif()
