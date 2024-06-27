@@ -19,7 +19,7 @@ class QTensor
         QTensor(std::vector<T> values, std::vector<unsigned char> span_) : span(span_.begin(), span_.end())
         {
             rank = span.size();
-            for (int i = 0 ; i < values.size(); i+=2)
+            for (size_t i = 0 ; i < values.size(); i+=2)
             {
                 this->values.push_back({(float)values[i], (float)values[i+1]});
             }
@@ -32,26 +32,26 @@ class QTensor
                 std::cerr << "Error: the number of values is not consistent with the rank of the tensor" << std::endl;
                 exit(1);
             }else{
-                for (int i = 0 ; i < values.size(); i++)
+                for (size_t i = 0 ; i < values.size(); i++)
                 {
                     this->values.push_back(values[i]);
                 }
             } 
         }
 
-        std::complex<float> getValue(int index) { return values[index]; }
+        std::complex<float> getValue(size_t index) { return values[index]; }
 
         static QTensor contraction(QTensor A, QTensor B) 
         {
             auto getIndexInSet = [](std::set<unsigned char> set, unsigned char element) {
-                int index = 0;
+                unsigned char index = 0;
                 for (auto it = set.begin(); it != set.end(); ++it) {
                     if (*it == element) {
                         return index;
                     }
                     index++;
                 }
-                return 255; // Element not found in the set
+                return (unsigned char)255; // Element not found in the set
             };
 
             auto findCommonValues = [](std::set<unsigned char> set1, std::set<unsigned char> set2) -> std::vector<unsigned char> {
@@ -73,7 +73,7 @@ class QTensor
             std::vector<unsigned char> connections = findCommonValues(A.span, B.span);
 
             #pragma omp parallel for
-            for (int i = 0; i < (1 << (result.rank*2)); i++)
+            for (size_t i = 0; i < (1 << (result.rank*2)); i++)
             {   
                 cpu_classes::bitset bits(i);
 
@@ -81,10 +81,10 @@ class QTensor
                 cpu_classes::bitset b(0);
 
                 auto lane = newSpan.begin();
-                for (int k = 0 ; k < result.rank; k++)
+                for (size_t k = 0 ; k < result.rank; k++)
                 {
-                    int indexA = getIndexInSet(A.span, *lane);
-                    int indexB = getIndexInSet(B.span, *lane);
+                    size_t indexA = getIndexInSet(A.span, *lane);
+                    size_t indexB = getIndexInSet(B.span, *lane);
 
                     if (indexA != 255) a.set(2*A.rank - indexA - 1, bits.get(result.rank*2 - 1 - k));
                     else               b.set(2*B.rank - indexB - 1, bits.get(result.rank*2 - 1 - k));
@@ -95,11 +95,11 @@ class QTensor
                     lane++;
                 }
 
-                for (int m = 0; m < (1 << connections.size()); m++)
+                for (size_t m = 0; m < (1 << connections.size()); m++)
                 {
                     cpu_classes::bitset address_vacant(m);
-                    int cnt = 0;
-                    for (int c = 0; c < connections.size(); c++)
+                    size_t cnt = 0;
+                    for (size_t c = 0; c < connections.size(); c++)
                     {
                         unsigned char indexA = getIndexInSet(A.span, connections[c]);
                         unsigned char indexB = getIndexInSet(B.span, connections[c]);
@@ -116,7 +116,7 @@ class QTensor
         }
             void printValues(std::ostream& os = std::cout) const
             {
-                for (int i = 0 ; i < values.size(); i++)
+                for (size_t i = 0 ; i < values.size(); i++)
                 {
                     if (i != 0 && (i % (1 << rank)) == 0)
                     {
@@ -126,7 +126,7 @@ class QTensor
                 }
             }
 
-        int getRank() const { return rank; }
+        size_t getRank() const { return rank; }
     public:
-        int rank;
+        size_t rank;
 };

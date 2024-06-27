@@ -55,7 +55,7 @@ bool retrieveData(sqlite3* db, std::vector<Contraction>& contractions, int progr
         contraction.kind = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5));
         if (sqlite3_column_type(stmt, 6) != SQLITE_NULL) {
             const void* data = sqlite3_column_blob(stmt, 6);
-            int dataSize = sqlite3_column_bytes(stmt, 6);
+            size_t dataSize = sqlite3_column_bytes(stmt, 6);
             std::vector<double> values(static_cast<const double*>(data), static_cast<const double*>(data) + dataSize / sizeof(double));
             contraction.data = QTensor(values, contraction.span);
         }
@@ -93,7 +93,7 @@ bool retrieveData(sqlite3* db, std::vector<Contraction>& contractions, int progr
 ostream& operator<<(ostream& os, const vector<unsigned char>& span) {
     os << "[";
     for (size_t i = 0; i < span.size(); ++i) {
-        os << (int)span[i];
+        os << (size_t)span[i];
         if (i < span.size() - 1) {
             os << ", ";
         }
@@ -102,7 +102,7 @@ ostream& operator<<(ostream& os, const vector<unsigned char>& span) {
     return os;
 }
 
-void printTree(Contraction* root, int level = 0) {
+void printTree(Contraction* root, size_t level = 0) {
     if (root == nullptr) {
         return;
     }
@@ -143,7 +143,7 @@ void contractTree(Contraction* root) {
 
 int main(int argc, char** argv) {
     sqlite3* db;
-    int rc = sqlite3_open("../data/db-v2.sqlite", &db);
+    int rc = sqlite3_open("../data/db_ours.sqlite", &db);
     if (rc != SQLITE_OK) {
         std::cerr << "Error opening database: " << sqlite3_errmsg(db) << std::endl;
         sqlite3_close(db);

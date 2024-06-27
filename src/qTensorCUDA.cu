@@ -64,20 +64,20 @@ auto findCommonValues = [](std::vector<unsigned char> set1, std::vector<unsigned
     return commonValues;
 };
 
-__device__ void keepNtoMbits(cuda_classes::bitset& bits, int n, int m) 
+__device__ void keepNtoMbits(cuda_classes::bitset& bits, size_t n, size_t m) 
 { 
-    for (int i = 0; i < n; i++) 
+    for (size_t i = 0; i < n; i++) 
     { 
         bits.set(i, 0);
     }  
-    for (int i = m; i < 64; i++) 
+    for (size_t i = m; i < 64; i++) 
     { 
         bits.set(i, 0);
     }  
 }
 
-__device__ unsigned char getIndexInSet(unsigned char* set, unsigned char element, int size) {
-    for (int i = 0; i < size; i++) {
+__device__ unsigned char getIndexInSet(unsigned char* set, unsigned char element, size_t size) {
+    for (size_t i = 0; i < size; i++) {
         if (set[i] == element) {
             return i;
         }
@@ -86,15 +86,15 @@ __device__ unsigned char getIndexInSet(unsigned char* set, unsigned char element
 }
 
 __device__ void print_bitset(cuda_classes::bitset& bits) {
-    for (int i = 0; i < 64; i++) {
+    for (size_t i = 0; i < 64; i++) {
         printf("%d", bits.get(i));
     }
     printf("\n");
 }
 
-__global__ void contractionKernel(unsigned char* d_spanA, unsigned char* d_spanB, unsigned char* d_newSpan, unsigned char* connections, cpx* d_valuesA, cpx* d_valuesB, cpx* d_resultValues, int rankA, int rankB, int rankResult, int connectionsSize)
+__global__ void contractionKernel(unsigned char* d_spanA, unsigned char* d_spanB, unsigned char* d_newSpan, unsigned char* connections, cpx* d_valuesA, cpx* d_valuesB, cpx* d_resultValues, size_t rankA, size_t rankB, size_t rankResult, size_t connectionsSize)
 {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (i >= (1 << (rankResult*2))) return;
 
@@ -104,7 +104,7 @@ __global__ void contractionKernel(unsigned char* d_spanA, unsigned char* d_spanB
     cuda_classes::bitset b(0);
 
     auto lane = d_newSpan;
-    for (int k = 0 ; k < rankResult; k++)
+    for (size_t k = 0 ; k < rankResult; k++)
     {
         unsigned char indexA = getIndexInSet(d_spanA, *lane, rankA);
         unsigned char indexB = getIndexInSet(d_spanB, *lane, rankB);
@@ -118,11 +118,11 @@ __global__ void contractionKernel(unsigned char* d_spanA, unsigned char* d_spanB
         lane++;
     }
 
-    for (int m = 0; m < (1 << connectionsSize); m++)
+    for (size_t m = 0; m < (1 << connectionsSize); m++)
     {
         cuda_classes::bitset address_vacant(m);
-        int cnt = 0;
-        for (int c = 0; c < connectionsSize; c++)
+        size_t cnt = 0;
+        for (size_t c = 0; c < connectionsSize; c++)
         {
             unsigned char indexA = getIndexInSet(d_spanA, connections[c], rankA);
             unsigned char indexB = getIndexInSet(d_spanB, connections[c], rankB);
@@ -136,7 +136,7 @@ __global__ void contractionKernel(unsigned char* d_spanA, unsigned char* d_spanB
     }
 }
 
-int round_div_up (int a, int b){
+size_t round_div_up (size_t a, size_t b){
     return (a + b - 1)/b;
 }
 
@@ -186,9 +186,9 @@ QTensor contractionGPU(QTensor A, QTensor B)
 
     // kernel call
     {
-        int nels = 1 << (result.rank*2);
-        int blocksize = 256;
-        int numBlocks = round_div_up(nels, blocksize);
+        size_t nels = 1 << (result.rank*2);
+        size_t blocksize = 256;
+        size_t numBlocks = round_div_up(nels, blocksize);
 
         // std::cout << "numBlocks: " << numBlocks << " blocksize: " << blocksize << std::endl;
 
@@ -278,9 +278,9 @@ auto contractTreeGPU_r(Contraction* root) -> void {
 
         // kernel call
         {
-            int nels = 1 << (root->span.size()*2);
-            int blocksize = 256;
-            int numBlocks = round_div_up(nels, blocksize);
+            size_t nels = 1 << (root->span.size()*2);
+            size_t blocksize = 256;
+            size_t numBlocks = round_div_up(nels, blocksize);
 
             // std::cout << "numBlocks: " << numBlocks << " blocksize: " << blocksize << std::endl;
 
