@@ -12,6 +12,7 @@ namespace cuda_classes{
             if (byte_size > 8) { printf("Error: the size of the input value is larger than the size of the bitset\n"); return; }
             for (size_t i = 0; i < byte_size; i++)
             {
+                // TODO: compute all possible values for the bitset at compile time
                 // big endian
                 data[i] = (value >> (i*8)) & 0xFF;
 

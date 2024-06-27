@@ -197,6 +197,10 @@ int main(int argc, char** argv) {
     #endif
     chrono::steady_clock::time_point end = chrono::steady_clock::now();
     cout << "Time difference = " << (double)chrono::duration_cast<chrono::microseconds>(end - begin).count() / 1000. << "[ms]" << endl;
+    // append the time and the program id to times.csv
+    ofstream times("times.csv", ios::app);
+    times << (double)chrono::duration_cast<chrono::microseconds>(end - begin).count() / 1000. << "," << programId << endl;
+    times.close();
     if (DEBUG){
         for (const auto& contraction : contractions) {
             std::cout << "Contraction: " << contraction.id << std::endl;

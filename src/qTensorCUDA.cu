@@ -5,9 +5,45 @@
 
 #include <cuComplex.h>
 #include <unordered_map>
+#include <cublas_v2.h>
 
 // using namespace cuda_classes;
 using cpx = cuComplex;
+
+#ifdef CUBLAS_API_H_
+// cuBLAS API errors
+static const char *_cudaGetErrorEnum(cublasStatus_t error)
+{
+    switch (error)
+    {
+        case CUBLAS_STATUS_SUCCESS:
+            return "CUBLAS_STATUS_SUCCESS";
+
+        case CUBLAS_STATUS_NOT_INITIALIZED:
+            return "CUBLAS_STATUS_NOT_INITIALIZED";
+
+        case CUBLAS_STATUS_ALLOC_FAILED:
+            return "CUBLAS_STATUS_ALLOC_FAILED";
+
+        case CUBLAS_STATUS_INVALID_VALUE:
+            return "CUBLAS_STATUS_INVALID_VALUE";
+
+        case CUBLAS_STATUS_ARCH_MISMATCH:
+            return "CUBLAS_STATUS_ARCH_MISMATCH";
+
+        case CUBLAS_STATUS_MAPPING_ERROR:
+            return "CUBLAS_STATUS_MAPPING_ERROR";
+
+        case CUBLAS_STATUS_EXECUTION_FAILED:
+            return "CUBLAS_STATUS_EXECUTION_FAILED";
+
+        case CUBLAS_STATUS_INTERNAL_ERROR:
+            return "CUBLAS_STATUS_INTERNAL_ERROR";
+    }
+
+    return "<unknown>";
+}
+#endif
 
 void cuda_err_check (cudaError_t err, const char *file, int line)
 {
@@ -185,6 +221,8 @@ struct gpuQtensor {
 
 std::unordered_map<Contraction*, gpuQtensor> gpuQtensorMap;
 
+cublasHandle_t handle;
+
 gpuQtensor moveQtensorToGPU (Contraction* contraction) {
     unsigned char* d_span;
     cpx* d_values;
@@ -245,17 +283,44 @@ auto contractTreeGPU_r(Contraction* root) -> void {
             int numBlocks = round_div_up(nels, blocksize);
 
             // std::cout << "numBlocks: " << numBlocks << " blocksize: " << blocksize << std::endl;
-            contractionKernel<<<numBlocks, blocksize>>>(gpuQtensorMap[root->right].span, gpuQtensorMap[root->left].span, gpuQtensorMap[root].span, d_connections, gpuQtensorMap[root->right].values, gpuQtensorMap[root->left].values, gpuQtensorMap[root].values, root->right->span.size(), root->left->span.size(), root->span.size(), connections.size());
 
+            // if the span are the same use gemm
+            if (root->left->span == root->right->span && false) {
+                size_t nels = 1 << (root->span.size());
+                cpx alpha = {1.0, 0.0};
+                cpx beta = {0.0, 0.0};
+
+                cublasStatus_t status = cublasCgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, nels, nels, nels, &alpha, gpuQtensorMap[root->left].values, nels, gpuQtensorMap[root->right].values, nels, &beta, gpuQtensorMap[root].values, nels);
+                if (status != CUBLAS_STATUS_SUCCESS) {
+                    fprintf(stderr, "cublasCgemm failed: %s\n", _cudaGetErrorEnum(status));
+                    exit(EXIT_FAILURE);
+                }
+                err = cudaGetLastError(); cuda_err_check(err, __FILE__, __LINE__);
+                err = cudaDeviceSynchronize(); cuda_err_check(err, __FILE__, __LINE__);
+            }
+            else {
+                contractionKernel<<<numBlocks, blocksize>>>(gpuQtensorMap[root->right].span, gpuQtensorMap[root->left].span, gpuQtensorMap[root].span, d_connections, gpuQtensorMap[root->right].values, gpuQtensorMap[root->left].values, gpuQtensorMap[root].values, root->right->span.size(), root->left->span.size(), root->span.size(), connections.size());
+                err = cudaGetLastError(); cuda_err_check(err, __FILE__, __LINE__);
+                err = cudaDeviceSynchronize(); cuda_err_check(err, __FILE__, __LINE__);
+            }
+            
             err = cudaFree(gpuQtensorMap[root->left].span); cuda_err_check(err, __FILE__, __LINE__);
             err = cudaFree(gpuQtensorMap[root->left].values); cuda_err_check(err, __FILE__, __LINE__);
             err = cudaFree(gpuQtensorMap[root->right].span); cuda_err_check(err, __FILE__, __LINE__);
             err = cudaFree(gpuQtensorMap[root->right].values); cuda_err_check(err, __FILE__, __LINE__);
+            
         }
     }
 }
 
 auto contractTreeGPU(Contraction* root) -> void {
+    cublasStatus_t status;
+    status = cublasCreate(&handle); 
+    if (status != CUBLAS_STATUS_SUCCESS) {
+        fprintf(stderr, "cublasCreate failed: %s\n", _cudaGetErrorEnum(status));
+        exit(EXIT_FAILURE);
+    }
+
     contractTreeGPU_r(root);
 
     cudaError_t err;
@@ -267,4 +332,9 @@ auto contractTreeGPU(Contraction* root) -> void {
 
     err = cudaFree(gpuQtensorMap[root].span); cuda_err_check(err, __FILE__, __LINE__);
     err = cudaFree(gpuQtensorMap[root].values); cuda_err_check(err, __FILE__, __LINE__);
+    status = cublasDestroy(handle);
+    if (status != CUBLAS_STATUS_SUCCESS) {
+        fprintf(stderr, "cublasDestroy failed: %s\n", _cudaGetErrorEnum(status));
+        exit(EXIT_FAILURE);
+    }
 }

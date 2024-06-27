@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.10)
 project(CuContraction LANGUAGES CXX)
 
 # verbose makefile
-set( CMAKE_VERBOSE_MAKEFILE on)
+set(CMAKE_VERBOSE_MAKEFILE on)
 
 # make O3 the default
 set(CMAKE_BUILD_TYPE "Release")
@@ -21,6 +21,13 @@ if (ENABLE_CUDA)
     set(CMAKE_CUDA_STANDARD 20)
     set(CMAKE_CUDA_STANDARD_REQUIRED True)
     add_definitions(-DENABLE_CUDA)
+
+    # Find CUDA package
+    find_package(CUDA REQUIRED)
+    
+    # Include cuBLAS
+    include_directories(${CUDA_INCLUDE_DIRS})
+    list(APPEND CUDA_LIBRARIES cublas)
 endif()
 
 # Add the include directory
@@ -49,6 +56,9 @@ if (ENABLE_CUDA)
     # Set target properties for CUDA
     set_target_properties(CuContraction PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
     set_target_properties(CuContraction PROPERTIES CUDA_ARCHITECTURES 80)
+    
+    # Link against CUDA libraries including cuBLAS
+    target_link_libraries(CuContraction PRIVATE ${CUDA_LIBRARIES})
 endif()
 
 # Find OpenMP

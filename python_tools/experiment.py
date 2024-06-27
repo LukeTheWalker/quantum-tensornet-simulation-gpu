@@ -17,6 +17,12 @@ def get_results():
     LIMIT 1;
     """
 
+    query_time = """
+    SELECT contraction_cpu_time_us
+    FROM programs
+    WHERE id = ?
+    LIMIT 1;
+    """
     # Execute the query
     cursor.execute(query, (sys.argv[1], sys.argv[2]))
 
@@ -34,10 +40,22 @@ def get_results():
     else:
         print(f"No data found for {sys.argv[1]} and experiment_id {sys.argv[2]}.")
 
+    # Execute the query
+    cursor.execute(query_time, (sys.argv[1],))
+
+    # Fetch the result
+    result = cursor.fetchone()
+
+    # Check if a result was found
+    if result:
+        reference_cpu = result[0]
+    else:
+        print(f"No data found for {sys.argv[1]}.")
+
     # Close the connection
     conn.close()
 
-    return input_vector, output_vector
+    return input_vector, output_vector, reference_cpu
 
 
 # there is a txt file with the data of the gates
@@ -64,7 +82,7 @@ print("Size of a:", len(a))
 a = np.array([complex(x[0], x[1]) for x in a])
 # v = np.array([complex(x[0], x[1]) for x in v])
 
-v_in, v_out = get_results()
+v_in, v_out, ref_time = get_results()
 
 print("v_in size:", v_in.size)
 
@@ -96,3 +114,5 @@ print(result)
 
 # check the norm of the result
 print(np.linalg.norm(result - v_out))
+
+print(f"Reference CPU time: {ref_time/1000} ms")
