@@ -8,7 +8,13 @@
 #include <cublas_v2.h>
 
 // using namespace cuda_classes;
-using cpx = cuComplex;
+#ifdef USE_FLOAT
+using dtype = float;
+using cpx = cuFloatComplex;
+#else
+using dtype = double;
+using cpx = cuDoubleComplex;
+#endif
 
 #ifdef CUBLAS_API_H_
 // cuBLAS API errors
@@ -130,9 +136,13 @@ __global__ void contractionKernel(unsigned char* d_spanA, unsigned char* d_spanB
             b.set(2*rankB - indexB - 1, address_vacant.get(cnt));
             cnt++;
         }
-
+        #ifdef USE_FLOAT
         cpx value = cuCmulf(d_valuesA[a.to_ulong()], d_valuesB[b.to_ulong()]);
         d_resultValues[i] = cuCaddf(d_resultValues[i], value);
+        #else
+        cpx value = cuCmul(d_valuesA[a.to_ulong()], d_valuesB[b.to_ulong()]);
+        d_resultValues[i] = cuCadd(d_resultValues[i], value);
+        #endif
     }
 }
 
@@ -152,7 +162,7 @@ QTensor contractionGPU(QTensor A, QTensor B)
     std::vector<unsigned char> spanB(B.span.begin(), B.span.end());
 
     QTensor result = QTensor(newSpan);
-    std::vector<std::complex<float>> resultValues(1 << (result.rank*2), {0.0, 0.0});
+    std::vector<std::complex<dtype>> resultValues(1 << (result.rank*2), {0.0, 0.0});
 
     std::vector<unsigned char> connections = findCommonValues(spanA, spanB);
 
@@ -289,8 +299,11 @@ auto contractTreeGPU_r(Contraction* root) -> void {
                 size_t nels = 1 << (root->span.size());
                 cpx alpha = {1.0, 0.0};
                 cpx beta = {0.0, 0.0};
-
+                #ifdef USE_FLOAT
                 cublasStatus_t status = cublasCgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, nels, nels, nels, &alpha, gpuQtensorMap[root->left].values, nels, gpuQtensorMap[root->right].values, nels, &beta, gpuQtensorMap[root].values, nels);
+                #else
+                cublasStatus_t status = cublasZgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, nels, nels, nels, &alpha, gpuQtensorMap[root->left].values, nels, gpuQtensorMap[root->right].values, nels, &beta, gpuQtensorMap[root].values, nels);
+                #endif
                 if (status != CUBLAS_STATUS_SUCCESS) {
                     fprintf(stderr, "cublasCgemm failed: %s\n", _cudaGetErrorEnum(status));
                     exit(EXIT_FAILURE);
@@ -324,7 +337,7 @@ auto contractTreeGPU(Contraction* root) -> void {
     contractTreeGPU_r(root);
 
     cudaError_t err;
-    std::vector<std::complex<float>> resultValues(1 << (root->span.size()*2));
+    std::vector<std::complex<dtype>> resultValues(1 << (root->span.size()*2));
     err = cudaMemcpy(resultValues.data(), gpuQtensorMap[root].values, resultValues.size() * sizeof(cpx), cudaMemcpyDeviceToHost); cuda_err_check(err, __FILE__, __LINE__);
     root->data = QTensor();
     root->data.rank = root->span.size();

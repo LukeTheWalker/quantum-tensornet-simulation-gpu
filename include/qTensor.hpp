@@ -8,11 +8,17 @@
 #include <array>
 #include "bitset.hpp"
 
+#ifdef USE_FLOAT
+using dtype = float;
+#else
+using dtype = double;
+#endif
+
 class QTensor
 {
     public:
         std::set<unsigned char> span;
-        std::vector<std::complex<float> > values;
+        std::vector<std::complex<dtype> > values;
         QTensor() {}
         QTensor(std::set<unsigned char> span): span(span){this->rank = span.size();}
         template <typename T>
@@ -21,11 +27,11 @@ class QTensor
             rank = span.size();
             for (size_t i = 0 ; i < values.size(); i+=2)
             {
-                this->values.push_back({(float)values[i], (float)values[i+1]});
+                this->values.push_back({(dtype)values[i], (dtype)values[i+1]});
             }
         }
 
-        void setValues(std::vector<std::complex<float>> values) 
+        void setValues(std::vector<std::complex<dtype>> values) 
         {
             if (values.size() != std::pow(2, rank*2))
             {
@@ -39,7 +45,7 @@ class QTensor
             } 
         }
 
-        std::complex<float> getValue(size_t index) { return values[index]; }
+        std::complex<dtype> getValue(size_t index) { return values[index]; }
 
         static QTensor contraction(QTensor A, QTensor B) 
         {
@@ -68,7 +74,7 @@ class QTensor
             newSpan.insert(A.span.begin(), A.span.end());
             newSpan.insert(B.span.begin(), B.span.end());
             QTensor result = QTensor(newSpan);
-            std::vector<std::complex<float>> resultValues(1 << (result.rank*2), {0.0, 0.0});
+            std::vector<std::complex<dtype>> resultValues(1 << (result.rank*2), {0.0, 0.0});
 
             std::vector<unsigned char> connections = findCommonValues(A.span, B.span);
 

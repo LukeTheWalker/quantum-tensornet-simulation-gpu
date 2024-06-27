@@ -13,6 +13,12 @@ set(CMAKE_BUILD_TYPE "Release")
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
+# Option to use float or double
+option(USE_FLOAT "Use float instead of double" OFF)
+if (USE_FLOAT)
+    add_definitions(-DUSE_FLOAT)
+endif()
+
 # Option to enable/disable CUDA
 option(ENABLE_CUDA "Enable CUDA support" OFF)
 
