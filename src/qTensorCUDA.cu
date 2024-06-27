@@ -285,7 +285,7 @@ auto contractTreeGPU_r(Contraction* root) -> void {
             // std::cout << "numBlocks: " << numBlocks << " blocksize: " << blocksize << std::endl;
 
             // if the span are the same use gemm
-            if (root->left->span == root->right->span && false) {
+            if (root->left->span == root->right->span) {
                 size_t nels = 1 << (root->span.size());
                 cpx alpha = {1.0, 0.0};
                 cpx beta = {0.0, 0.0};

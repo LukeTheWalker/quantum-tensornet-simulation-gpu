@@ -20,6 +20,9 @@ df_val = pd.read_csv('../build/times.csv', header=None)
 # assign column names
 df_val.columns = ['time', 'id']
 
+# print sum of all times
+print(f"total experiment time_ {df_val['time'].sum()}")
+
 # merge the two dataframes
 df = pd.merge(df_val, df_ref, on='id')
 
