@@ -33,14 +33,28 @@ df['speedup'] = (df['contraction_cpu_time_us'] / 1000) / df['time']
 df['qubits'] = df['filename'].str.extract(r'_(\d+)_').astype(int)
 df['depth'] = df['filename'].str.extract(r'_(\d+).qasm').astype(int)
 
+
+qubit_set =  df['qubits'].unique()
+qubit_set.sort()
+qubit_set = qubit_set[::-1]
+
+colors = { 
+    5 : 'tab:olive',
+    6 : 'tab:blue', 
+    7 : 'tab:orange',
+    8 : 'tab:green',
+    9 : 'tab:red',
+    10 : 'tab:purple'
+}
+
 plt.figure(figsize=(10,6))
 
 # for each number of qubits, plot the speedup in function of increasing depth
-for qubits in df['qubits'].unique():
+for qubits in qubit_set[:3]:
     print(qubits)
     df_qubits = df[df['qubits'] == qubits]
     print(df_qubits)
-    plt.plot(df_qubits['depth'], df_qubits['speedup'], label=f'{qubits} qubits')
+    plt.plot(df_qubits['depth'], df_qubits['speedup'], label=f'{qubits} qubits', color=colors[qubits])
 
 plt.title('Speedup vs Depth for different number of qubits')
 plt.xlabel('Depth')
@@ -48,7 +62,28 @@ plt.ylabel('Speedup')
 plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
 plt.tight_layout()
 plt.grid()
-plt.savefig(f'{data_folder}/speedup.png')
+# plt.savefig(f'{data_folder}/speedup_high_qbits_count.png')
+plt.savefig(f'{data_folder}/speedup_high_qbits_count.svg', transparent=True, bbox_inches='tight')
+plt.clf()
+
+plt.figure(figsize=(10,6))
+
+# for each number of qubits, plot the speedup in function of increasing depth
+for qubits in qubit_set[2:]:
+    print(qubits)
+    df_qubits = df[df['qubits'] == qubits]
+    print(df_qubits)
+    plt.plot(df_qubits['depth'], df_qubits['speedup'], label=f'{qubits} qubits', color=colors[qubits])
+
+plt.title('Speedup vs Depth for different number of qubits')
+plt.xlabel('Depth')
+plt.ylabel('Speedup')
+plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+plt.tight_layout()
+plt.grid()
+# plt.savefig(f'{data_folder}/speedup_low_qbits_count.png')
+plt.savefig(f'{data_folder}/speedup_low_qbits_count.svg', transparent=True, bbox_inches='tight')
+plt.clf()
 
 # new figure
 plt.figure(figsize=(10,6))
@@ -60,5 +95,6 @@ plt.title('Mean Speedup vs Number of qubits')
 plt.xlabel('Number of qubits')
 plt.ylabel('Mean Speedup')
 plt.grid()
-plt.savefig(f'{data_folder}/mean_speedup.png')
+# plt.savefig(f'{data_folder}/mean_speedup.png')
+plt.savefig(f'{data_folder}/mean_speedup.svg', transparent=True, bbox_inches='tight')
 

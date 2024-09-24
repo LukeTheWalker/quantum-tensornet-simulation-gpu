@@ -4,7 +4,7 @@ import struct
 import sys
 
 def get_results():
-    conn = sqlite3.connect('data/db-v2.sqlite')
+    conn = sqlite3.connect('data/db_ours.sqlite')
 
     # Create a cursor object
     cursor = conn.cursor()
