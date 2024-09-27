@@ -132,7 +132,7 @@ void contractTree(Contraction* root) {
         // root->data = contractionGPU(root->left->data, root->right->data);
 
         #ifdef ENABLE_CUDA
-        root->data = contractionGPU(root->right->data, root->left->data);
+        //root->data = contractionGPU(root->right->data, root->left->data);
         #else
         root->data = QTensor::contraction(root->right->data, root->left->data);
         #endif
