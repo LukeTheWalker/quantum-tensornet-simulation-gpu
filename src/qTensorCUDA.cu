@@ -98,7 +98,7 @@ __device__ void print_bitset(cuda_classes::bitset& bits) {
     printf("\n");
 }
 
-__global__ void contractionKernel(unsigned char* d_spanA, unsigned char* d_spanB, unsigned char* d_newSpan, unsigned char* connections, cpx* d_valuesA, cpx* d_valuesB, cpx* d_resultValues, size_t rankA, size_t rankB, size_t rankResult, size_t connectionsSize, unsigned char* indexesA, unsigned char* indexesB)
+__global__ void contractionKernel(unsigned char* d_spanA, unsigned char* d_spanB, unsigned char* d_newSpan, unsigned char* connections, cpx* d_valuesA, cpx* d_valuesB, cpx* d_resultValues, size_t rankA, size_t rankB, size_t rankResult, size_t connectionsSize, unsigned char* indexesA, unsigned char* indexesB, unsigned char* indexesA_connections, unsigned char* indexesB_connections)
 {
     // extern __shared__ unsigned char sharedMem[];
     size_t i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -133,8 +133,12 @@ __global__ void contractionKernel(unsigned char* d_spanA, unsigned char* d_spanB
         size_t cnt = 0;
         for (size_t c = 0; c < connectionsSize; c++)
         {
-            unsigned char indexA = getIndexInSet(d_spanA, connections[c], rankA);
-            unsigned char indexB = getIndexInSet(d_spanB, connections[c], rankB);
+            // unsigned char indexA = getIndexInSet(d_spanA, connections[c], rankA);
+            // unsigned char indexB = getIndexInSet(d_spanB, connections[c], rankB);
+
+            unsigned char indexA = indexesA_connections[c];
+            unsigned char indexB = indexesB_connections[c];
+
             a.set(rankA - indexA - 1, address_vacant.get(cnt));
             b.set(2*rankB - indexB - 1, address_vacant.get(cnt));
             cnt++;
@@ -280,6 +284,9 @@ auto contractTreeGPU_r(Contraction* root) -> void {
         unsigned char indexesA[root->span.size()];
         unsigned char indexesB[root->span.size()];
 
+        unsigned char indexes_connectionsA[connections.size()];
+        unsigned char indexes_connectionsB[connections.size()];
+
         // memcopies
         {
             err = cudaMalloc(&d_newSpan, root->span.size() * sizeof(unsigned char)); cuda_err_check(err, __FILE__, __LINE__);
@@ -327,6 +334,11 @@ auto contractTreeGPU_r(Contraction* root) -> void {
                     indexesB[i] = getIndexInSet(root->left->span.data(),  root->span[i], root->left->span.size());
                 }
 
+                for (size_t i = 0; i < connections.size(); i++) {
+                    indexes_connectionsA[i] = getIndexInSet(root->right->span.data(), connections[i], root->right->span.size());
+                    indexes_connectionsB[i] = getIndexInSet(root->left->span.data(),  connections[i], root->left->span.size());
+                }
+
                 unsigned char* d_indexesA, *d_indexesB;
                 err = cudaMalloc(&d_indexesA, root->span.size() * sizeof(unsigned char)); cuda_err_check(err, __FILE__, __LINE__);
                 err = cudaMalloc(&d_indexesB, root->span.size() * sizeof(unsigned char)); cuda_err_check(err, __FILE__, __LINE__);
@@ -334,12 +346,22 @@ auto contractTreeGPU_r(Contraction* root) -> void {
                 err = cudaMemcpy(d_indexesA, indexesA, root->span.size() * sizeof(unsigned char), cudaMemcpyHostToDevice); cuda_err_check(err, __FILE__, __LINE__);
                 err = cudaMemcpy(d_indexesB, indexesB, root->span.size() * sizeof(unsigned char), cudaMemcpyHostToDevice); cuda_err_check(err, __FILE__, __LINE__);
 
-                contractionKernel<<<numBlocks, blocksize/*, sharedMemSize*/>>>(gpuQtensorMap[root->right].span, gpuQtensorMap[root->left].span, gpuQtensorMap[root].span, d_connections, gpuQtensorMap[root->right].values, gpuQtensorMap[root->left].values, gpuQtensorMap[root].values, root->right->span.size(), root->left->span.size(), root->span.size(), connections.size(), d_indexesA, d_indexesB);
+                unsigned char* d_indexes_connectionsA, *d_indexes_connectionsB;
+                err = cudaMalloc(&d_indexes_connectionsA, connections.size() * sizeof(unsigned char)); cuda_err_check(err, __FILE__, __LINE__);
+                err = cudaMalloc(&d_indexes_connectionsB, connections.size() * sizeof(unsigned char)); cuda_err_check(err, __FILE__, __LINE__);
+
+                err = cudaMemcpy(d_indexes_connectionsA, indexes_connectionsA, connections.size() * sizeof(unsigned char), cudaMemcpyHostToDevice); cuda_err_check(err, __FILE__, __LINE__);
+                err = cudaMemcpy(d_indexes_connectionsB, indexes_connectionsB, connections.size() * sizeof(unsigned char), cudaMemcpyHostToDevice); cuda_err_check(err, __FILE__, __LINE__);
+
+                contractionKernel<<<numBlocks, blocksize/*, sharedMemSize*/>>>(gpuQtensorMap[root->right].span, gpuQtensorMap[root->left].span, gpuQtensorMap[root].span, d_connections, gpuQtensorMap[root->right].values, gpuQtensorMap[root->left].values, gpuQtensorMap[root].values, root->right->span.size(), root->left->span.size(), root->span.size(), connections.size(), d_indexesA, d_indexesB, d_indexes_connectionsA, d_indexes_connectionsB);
                 err = cudaGetLastError(); cuda_err_check(err, __FILE__, __LINE__);
                 err = cudaDeviceSynchronize(); cuda_err_check(err, __FILE__, __LINE__);
 
                 err = cudaFree(d_indexesA); cuda_err_check(err, __FILE__, __LINE__);
                 err = cudaFree(d_indexesB); cuda_err_check(err, __FILE__, __LINE__);
+
+                err = cudaFree(d_indexes_connectionsA); cuda_err_check(err, __FILE__, __LINE__);
+                err = cudaFree(d_indexes_connectionsB); cuda_err_check(err, __FILE__, __LINE__);
             }
             
             err = cudaFree(gpuQtensorMap[root->left].span); cuda_err_check(err, __FILE__, __LINE__);
