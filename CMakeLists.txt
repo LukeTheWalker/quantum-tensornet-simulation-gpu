@@ -61,7 +61,8 @@ target_link_libraries(CuContraction PRIVATE SQLite::SQLite3)
 if (ENABLE_CUDA)
     # Set target properties for CUDA
     set_target_properties(CuContraction PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-    set_target_properties(CuContraction PROPERTIES CUDA_ARCHITECTURES 80)
+    # use the appropriate architecture for the Tesla V100 and A100
+    set_target_properties(CuContraction PROPERTIES CUDA_ARCHITECTURES "70;80")
     
     # Link against CUDA libraries including cuBLAS
     target_link_libraries(CuContraction PRIVATE ${CUDA_LIBRARIES})
