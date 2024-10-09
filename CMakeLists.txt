@@ -24,7 +24,7 @@ option(ENABLE_CUDA "Enable CUDA support" OFF)
 
 if (ENABLE_CUDA)
     enable_language(CUDA)
-    set(CMAKE_CUDA_STANDARD 20)
+    set(CMAKE_CUDA_STANDARD 17)
     set(CMAKE_CUDA_STANDARD_REQUIRED True)
     add_definitions(-DENABLE_CUDA)
 
