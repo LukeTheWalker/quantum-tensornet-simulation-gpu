@@ -5,7 +5,7 @@
 #include <fstream>
 #include <chrono>
 
-#include "qTensor.hpp"
+#include "qTensor.cuh"
 #include "Contraction.hpp"
 
 #ifdef ENABLE_CUDA
@@ -117,28 +117,6 @@ void printTree(Contraction* root, size_t level = 0) {
     }
 } 
 
-void contractTree(Contraction* root) {
-    // cout << "Contracting tree node with id " << root->id << " and kind " << root->kind << endl;
-    if (root == nullptr)
-        return;
-    if (root->kind == "C") {
-        // cout << "Contracting left child with pointer " << root->left << " and right child with pointer " << root->right << endl;
-        contractTree(root->left);
-        contractTree(root->right);
-        // cout << "Getting data for contraction " << root->id << " with left data rank " << root->left->data.getRank() << " and right data rank " << root->right->data.getRank() << endl;
-
-        // root->data = QTensor::contraction(root->right->data, root->left->data);
-        // root->data = QTensor::contraction(root->left->data, root->right->data);
-        // root->data = contractionGPU(root->left->data, root->right->data);
-
-        #ifdef ENABLE_CUDA
-        //root->data = contractionGPU(root->right->data, root->left->data);
-        #else
-        root->data = QTensor::contraction(root->right->data, root->left->data);
-        #endif
-    }
-}
-
 #define DEBUG false
 
 int main(int argc, char** argv) {
@@ -192,8 +170,6 @@ int main(int argc, char** argv) {
     chrono::steady_clock::time_point begin = chrono::steady_clock::now();
     #ifdef ENABLE_CUDA
     contractTreeGPU(root);
-    #else
-    contractTree(root);
     #endif
     chrono::steady_clock::time_point end = chrono::steady_clock::now();
     cout << "Time difference = " << (double)chrono::duration_cast<chrono::microseconds>(end - begin).count() / 1000. << "[ms]" << endl;

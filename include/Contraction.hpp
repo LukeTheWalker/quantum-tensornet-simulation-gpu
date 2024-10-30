@@ -3,7 +3,7 @@
 #include <vector>
 #include <string>
 
-#include "qTensor.hpp"
+#include "qTensor.cuh"
 
 struct Contraction {
     int id;

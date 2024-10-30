@@ -37,5 +37,9 @@ namespace cuda_classes{
             if (get(index)) other.data[byte_index] |= (1 << bit_index);
             else other.data[byte_index] &= ~(1 << bit_index);
         }
+
+        __host__ __device__ void xor_op (size_t other){
+            *(size_t *) data ^= other;
+        }
     };
 }

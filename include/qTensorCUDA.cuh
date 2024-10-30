@@ -1,4 +1,4 @@
-#include "qTensor.hpp"
+#include "qTensor.cuh"
 #include "Contraction.hpp"
 
 auto contractionGPU(QTensor A, QTensor B) -> QTensor;

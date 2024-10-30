@@ -1,4 +1,4 @@
-#include "qTensor.hpp"
+#include "qTensor.cuh"
 #include "qTensorCUDA.cuh"
 #include "bitsetCU.cuh"
 #include "Contraction.hpp"
@@ -129,8 +129,11 @@ __global__ void contractionKernel(cuda_classes::bitset* bit_addressesA, cuda_cla
         unsigned char indexA = indexesA_connections[position_vacant];
         unsigned char indexB = indexesB_connections[position_vacant];
 
-        bit_addressesA[i].set(rankA - indexA - 1,   !bit_addressesA[i].get(rankA - indexA - 1));
-        bit_addressesB[i].set(2*rankB - indexB - 1, !bit_addressesB[i].get(2*rankB - indexB - 1));
+        // bit_addressesA[i].set(rankA - indexA - 1,   !bit_addressesA[i].get(rankA - indexA - 1));
+        // bit_addressesB[i].set(2*rankB - indexB - 1, !bit_addressesB[i].get(2*rankB - indexB - 1));
+
+        bit_addressesA[i].xor_op(1 << (rankA - indexA - 1));
+        bit_addressesB[i].xor_op(1 << (2*rankB - indexB - 1));
 
         // for (size_t c = 0; c < connectionsSize; c++)
         // {
@@ -182,18 +185,20 @@ std::unordered_map<Contraction*, gpuQtensor> gpuQtensorMap;
 
 cublasHandle_t handle;
 
-gpuQtensor moveQtensorToGPU (Contraction* contraction) {
+gpuQtensor moveQtensorToGPU (Contraction* contraction, cudaStream_t stream) {
     cpx* d_values;
 
     cudaError_t err;
 
-    err = cudaMalloc(&d_values, contraction->data.values.size() * sizeof(cpx)); cuda_err_check(err, __FILE__, __LINE__);
+    err = cudaMallocAsync(&d_values, contraction->data.getValuesSize() * sizeof(cpx), stream); cuda_err_check(err, __FILE__, __LINE__);
 
-    err = cudaMemcpy(d_values, contraction->data.values.data(), contraction->data.values.size() * sizeof(cpx), cudaMemcpyHostToDevice); cuda_err_check(err, __FILE__, __LINE__);
+    err = cudaMemcpyAsync(d_values,  contraction->data.values, contraction->data.getValuesSize() * sizeof(cpx), cudaMemcpyHostToDevice, stream); cuda_err_check(err, __FILE__, __LINE__);
 
     gpuQtensor gpuA = {d_values};
     return gpuA;
 }
+
+cudaStream_t stream;
 
 auto contractTreeGPU_r(Contraction* root) -> void {
     if (root == nullptr)
@@ -203,10 +208,10 @@ auto contractTreeGPU_r(Contraction* root) -> void {
         contractTreeGPU_r(root->right);
 
         if (root->left->kind == "G") 
-            gpuQtensorMap[root->left] = moveQtensorToGPU(root->left);
+            gpuQtensorMap[root->left] = moveQtensorToGPU(root->left, stream);
 
         if (root->right->kind == "G")
-            gpuQtensorMap[root->right] = moveQtensorToGPU(root->right);
+            gpuQtensorMap[root->right] = moveQtensorToGPU(root->right, stream);
 
         std::vector<unsigned char> connections = findCommonValues(root->left->span, root->right->span);
 
@@ -225,9 +230,9 @@ auto contractTreeGPU_r(Contraction* root) -> void {
         // memcopies
         {
 
-            err = cudaMalloc(&d_resultValues, (1 << (root->span.size()*2)) * sizeof(cpx)); cuda_err_check(err, __FILE__, __LINE__);
+            err = cudaMallocAsync(&d_resultValues, (1 << (root->span.size()*2)) * sizeof(cpx), stream); cuda_err_check(err, __FILE__, __LINE__);
 
-            err = cudaMemset(d_resultValues, 0, (1 << (root->span.size()*2)) * sizeof(cpx)); cuda_err_check(err, __FILE__, __LINE__);
+            err = cudaMemsetAsync(d_resultValues, 0, (1 << (root->span.size()*2)) * sizeof(cpx), stream); cuda_err_check(err, __FILE__, __LINE__);
         }
 
         gpuQtensorMap[root] = {d_resultValues};
@@ -255,69 +260,71 @@ auto contractTreeGPU_r(Contraction* root) -> void {
                     fprintf(stderr, "cublasCgemm failed: %s\n", _cudaGetErrorEnum(status));
                     exit(EXIT_FAILURE);
                 }
-                err = cudaGetLastError(); cuda_err_check(err, __FILE__, __LINE__);
-                err = cudaDeviceSynchronize(); cuda_err_check(err, __FILE__, __LINE__);
+                // err = cudaGetLastError(); cuda_err_check(err, __FILE__, __LINE__);
+                // err = cudaDeviceSynchronize(); cuda_err_check(err, __FILE__, __LINE__);
             }
             else {
+                cuda_classes::bitset* bit_addressesA, *bit_addressesB;
+
+                err = cudaMallocAsync(&bit_addressesA, nels * sizeof(cuda_classes::bitset), stream); cuda_err_check(err, __FILE__, __LINE__);
+                err = cudaMallocAsync(&bit_addressesB, nels * sizeof(cuda_classes::bitset), stream); cuda_err_check(err, __FILE__, __LINE__);
+
+                err = cudaMemsetAsync(bit_addressesA, 0, nels * sizeof(cuda_classes::bitset), stream); cuda_err_check(err, __FILE__, __LINE__);
+                err = cudaMemsetAsync(bit_addressesB, 0, nels * sizeof(cuda_classes::bitset), stream); cuda_err_check(err, __FILE__, __LINE__);
+
+                #pragma omp parallel for
                 for (size_t i = 0; i < root->span.size(); i++) {
                     indexesA[i] = getIndexInSet(root->right->span.data(), root->span[i], root->right->span.size());
                     indexesB[i] = getIndexInSet(root->left->span.data(),  root->span[i], root->left->span.size());
                 }
-
+                
+                #pragma omp parallel for
                 for (size_t i = 0; i < connections.size(); i++) {
                     indexes_connectionsA[i] = getIndexInSet(root->right->span.data(), connections[i], root->right->span.size());
                     indexes_connectionsB[i] = getIndexInSet(root->left->span.data(),  connections[i], root->left->span.size());
                 }
 
                 unsigned char* d_indexesA, *d_indexesB;
-                err = cudaMalloc(&d_indexesA, root->span.size() * sizeof(unsigned char)); cuda_err_check(err, __FILE__, __LINE__);
-                err = cudaMalloc(&d_indexesB, root->span.size() * sizeof(unsigned char)); cuda_err_check(err, __FILE__, __LINE__);
+                err = cudaMallocAsync(&d_indexesA, root->span.size() * sizeof(unsigned char), stream); cuda_err_check(err, __FILE__, __LINE__);
+                err = cudaMallocAsync(&d_indexesB, root->span.size() * sizeof(unsigned char), stream); cuda_err_check(err, __FILE__, __LINE__);
 
-                err = cudaMemcpy(d_indexesA, indexesA, root->span.size() * sizeof(unsigned char), cudaMemcpyHostToDevice); cuda_err_check(err, __FILE__, __LINE__);
-                err = cudaMemcpy(d_indexesB, indexesB, root->span.size() * sizeof(unsigned char), cudaMemcpyHostToDevice); cuda_err_check(err, __FILE__, __LINE__);
+                err = cudaMemcpyAsync(d_indexesA, indexesA, root->span.size() * sizeof(unsigned char), cudaMemcpyHostToDevice, stream); cuda_err_check(err, __FILE__, __LINE__);
+                err = cudaMemcpyAsync(d_indexesB, indexesB, root->span.size() * sizeof(unsigned char), cudaMemcpyHostToDevice, stream); cuda_err_check(err, __FILE__, __LINE__);
 
                 unsigned char* d_indexes_connectionsA, *d_indexes_connectionsB;
-                err = cudaMalloc(&d_indexes_connectionsA, connections.size() * sizeof(unsigned char)); cuda_err_check(err, __FILE__, __LINE__);
-                err = cudaMalloc(&d_indexes_connectionsB, connections.size() * sizeof(unsigned char)); cuda_err_check(err, __FILE__, __LINE__);
+                err = cudaMallocAsync(&d_indexes_connectionsA, connections.size() * sizeof(unsigned char), stream); cuda_err_check(err, __FILE__, __LINE__);
+                err = cudaMallocAsync(&d_indexes_connectionsB, connections.size() * sizeof(unsigned char), stream); cuda_err_check(err, __FILE__, __LINE__);
 
-                err = cudaMemcpy(d_indexes_connectionsA, indexes_connectionsA, connections.size() * sizeof(unsigned char), cudaMemcpyHostToDevice); cuda_err_check(err, __FILE__, __LINE__);
-                err = cudaMemcpy(d_indexes_connectionsB, indexes_connectionsB, connections.size() * sizeof(unsigned char), cudaMemcpyHostToDevice); cuda_err_check(err, __FILE__, __LINE__);
-
-                cuda_classes::bitset* bit_addressesA, *bit_addressesB;
-
-                err = cudaMalloc(&bit_addressesA, nels * sizeof(cuda_classes::bitset)); cuda_err_check(err, __FILE__, __LINE__);
-                err = cudaMalloc(&bit_addressesB, nels * sizeof(cuda_classes::bitset)); cuda_err_check(err, __FILE__, __LINE__);
-
-                err = cudaMemset(bit_addressesA, 0, nels * sizeof(cuda_classes::bitset)); cuda_err_check(err, __FILE__, __LINE__);
-                err = cudaMemset(bit_addressesB, 0, nels * sizeof(cuda_classes::bitset)); cuda_err_check(err, __FILE__, __LINE__);
+                err = cudaMemcpyAsync(d_indexes_connectionsA, indexes_connectionsA, connections.size() * sizeof(unsigned char), cudaMemcpyHostToDevice, stream); cuda_err_check(err, __FILE__, __LINE__);
+                err = cudaMemcpyAsync(d_indexes_connectionsB, indexes_connectionsB, connections.size() * sizeof(unsigned char), cudaMemcpyHostToDevice, stream); cuda_err_check(err, __FILE__, __LINE__);
 
                 double gb_used = (double)(sizeof(cuda_classes::bitset) * nels * 2) / (1024 * 1024 * 1024);
 
                 if (gb_used > 1)
                     std::cout << "Memory allocation: " << (double)(sizeof(cuda_classes::bitset) * nels * 2) / (1024 * 1024 * 1024) << " GB" << std::endl;
 
-                compute_bit_address_map<<<numBlocks, blocksize>>>(bit_addressesA, bit_addressesB, root->right->span.size(), root->left->span.size(), root->span.size(), d_indexesA, d_indexesB);
+                compute_bit_address_map<<<numBlocks, blocksize, 0, stream>>>(bit_addressesA, bit_addressesB, root->right->span.size(), root->left->span.size(), root->span.size(), d_indexesA, d_indexesB);
 
-                err = cudaGetLastError(); cuda_err_check(err, __FILE__, __LINE__);
-                err = cudaDeviceSynchronize(); cuda_err_check(err, __FILE__, __LINE__);
+                // err = cudaGetLastError(); cuda_err_check(err, __FILE__, __LINE__);
+                // err = cudaDeviceSynchronize(); cuda_err_check(err, __FILE__, __LINE__);
 
-                contractionKernel<<<numBlocks, blocksize>>>(bit_addressesA, bit_addressesB, gpuQtensorMap[root->right].values, gpuQtensorMap[root->left].values, gpuQtensorMap[root].values, root->right->span.size(), root->left->span.size(), root->span.size(), connections.size(), d_indexes_connectionsA, d_indexes_connectionsB);
+                contractionKernel<<<numBlocks, blocksize, 0, stream>>>(bit_addressesA, bit_addressesB, gpuQtensorMap[root->right].values, gpuQtensorMap[root->left].values, gpuQtensorMap[root].values, root->right->span.size(), root->left->span.size(), root->span.size(), connections.size(), d_indexes_connectionsA, d_indexes_connectionsB);
 
-                err = cudaGetLastError(); cuda_err_check(err, __FILE__, __LINE__);
-                err = cudaDeviceSynchronize(); cuda_err_check(err, __FILE__, __LINE__);
+                // err = cudaGetLastError(); cuda_err_check(err, __FILE__, __LINE__);
+                // err = cudaDeviceSynchronize(); cuda_err_check(err, __FILE__, __LINE__);
 
-                err = cudaFree(d_indexesA); cuda_err_check(err, __FILE__, __LINE__);
-                err = cudaFree(d_indexesB); cuda_err_check(err, __FILE__, __LINE__);
+                err = cudaFreeAsync(d_indexesA, stream); cuda_err_check(err, __FILE__, __LINE__);
+                err = cudaFreeAsync(d_indexesB, stream); cuda_err_check(err, __FILE__, __LINE__);
 
-                err = cudaFree(d_indexes_connectionsA); cuda_err_check(err, __FILE__, __LINE__);
-                err = cudaFree(d_indexes_connectionsB); cuda_err_check(err, __FILE__, __LINE__);
+                err = cudaFreeAsync(d_indexes_connectionsA, stream); cuda_err_check(err, __FILE__, __LINE__);
+                err = cudaFreeAsync(d_indexes_connectionsB, stream); cuda_err_check(err, __FILE__, __LINE__);
 
-                err = cudaFree(bit_addressesA); cuda_err_check(err, __FILE__, __LINE__);
-                err = cudaFree(bit_addressesB); cuda_err_check(err, __FILE__, __LINE__);
+                err = cudaFreeAsync(bit_addressesA, stream); cuda_err_check(err, __FILE__, __LINE__);
+                err = cudaFreeAsync(bit_addressesB, stream); cuda_err_check(err, __FILE__, __LINE__);
             }
             
-            err = cudaFree(gpuQtensorMap[root->left].values); cuda_err_check(err, __FILE__, __LINE__);
-            err = cudaFree(gpuQtensorMap[root->right].values); cuda_err_check(err, __FILE__, __LINE__);
+            err = cudaFreeAsync(gpuQtensorMap[root->left].values, stream); cuda_err_check(err, __FILE__, __LINE__);
+            err = cudaFreeAsync(gpuQtensorMap[root->right].values, stream); cuda_err_check(err, __FILE__, __LINE__);
         }
     }
 }
@@ -330,9 +337,13 @@ auto contractTreeGPU(Contraction* root) -> void {
         exit(EXIT_FAILURE);
     }
 
+    cudaError_t err = cudaStreamCreate(&stream); cuda_err_check(err, __FILE__, __LINE__);
+
     contractTreeGPU_r(root);
 
-    cudaError_t err;
+    err = cudaStreamSynchronize(stream); cuda_err_check(err, __FILE__, __LINE__);
+    err = cudaStreamDestroy(stream); cuda_err_check(err, __FILE__, __LINE__);
+
     std::vector<std::complex<dtype>> resultValues(1 << (root->span.size()*2));
     err = cudaMemcpy(resultValues.data(), gpuQtensorMap[root].values, resultValues.size() * sizeof(cpx), cudaMemcpyDeviceToHost); cuda_err_check(err, __FILE__, __LINE__);
     root->data = QTensor();
@@ -345,4 +356,6 @@ auto contractTreeGPU(Contraction* root) -> void {
         fprintf(stderr, "cublasDestroy failed: %s\n", _cudaGetErrorEnum(status));
         exit(EXIT_FAILURE);
     }
+
+    // std::cout << "Time elapsed: " << milliseconds << " ms" << std::endl;
 }
