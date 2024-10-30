@@ -59,6 +59,7 @@ bool retrieveData(sqlite3* db, std::vector<Contraction>& contractions, int progr
             std::vector<double> values(static_cast<const double*>(data), static_cast<const double*>(data) + dataSize / sizeof(double));
             contraction.data = QTensor(values, contraction.span);
         }
+        cudaStreamCreate(&contraction.stream);
         contractions.push_back(contraction);
     }
 

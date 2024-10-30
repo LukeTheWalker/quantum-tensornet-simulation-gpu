@@ -15,4 +15,5 @@ struct Contraction {
     Contraction* right;
     std::string kind;
     QTensor data;
+    cudaStream_t stream;
 };

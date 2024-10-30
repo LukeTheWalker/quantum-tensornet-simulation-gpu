@@ -35,7 +35,7 @@ class QTensor
         // QTensor(std::set<unsigned char> span): span(span){this->rank = span.size();}
         QTensor(std::set<unsigned char> span){ 
             this->rank = span.size();
-            cudaMallocHost(&this->span, span.size());
+            cudaMallocHost(&this->span, span.size(), cudaHostAllocWriteCombined);
             // this->span = (unsigned char *)malloc(span.size());
             std::copy(span.begin(), span.end(), this->span);
         }
