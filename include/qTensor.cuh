@@ -29,8 +29,8 @@ class QTensor
     public:
         // std::set<unsigned char> span;
         // std::vector<std::complex<dtype> > values;
-        unsigned char * span;
-        std::complex<dtype> * values;
+        unsigned char * span = nullptr;
+        std::complex<dtype> * values = nullptr;
         QTensor() {}
         // QTensor(std::set<unsigned char> span): span(span){this->rank = span.size();}
         QTensor(std::set<unsigned char> span){ 
@@ -66,6 +66,12 @@ class QTensor
 
         void printValues(std::ostream& os = std::cout) const
         {
+            if (values == nullptr)
+            {
+                os << "No values for this tensor";
+                return;
+            }
+
             for (size_t i = 0 ; i < std::pow(2, 2 * rank); i++)
             {
                 if (i != 0 && (i % (1 << rank)) == 0)

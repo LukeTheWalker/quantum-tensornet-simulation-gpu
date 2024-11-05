@@ -4,7 +4,7 @@ import struct
 import sys
 
 def get_results():
-    conn = sqlite3.connect('data/db_ours.sqlite')
+    conn = sqlite3.connect('data/quantum_circuit.db')
 
     # Create a cursor object
     cursor = conn.cursor()
@@ -97,12 +97,18 @@ print("Reference")
 print(v_out)
 
 # perform matrix multiplication
-result = np.dot(v_in, a)
+result_normal  = np.dot(v_in, a)
+result_flipped = np.dot(a, v_in)
 
 print("----------------------")
 
-print("Nostro")
-print(result)
+print("Nostro normal")
+print(result_normal)
+
+print("----------------------")
+
+print("Nostro flipped")
+print(result_flipped)
 
 # print the result
 # print(result)
@@ -113,6 +119,8 @@ print(result)
 # print(result)
 
 # check the norm of the result
-print(np.linalg.norm(result - v_out))
+# print(np.linalg.norm(result_flipped - v_out))
+print("Norm of the difference between the result and the reference:", np.linalg.norm(result_flipped - v_out))
+print("is the result correct?", np.allclose(result_flipped, v_out))
 
 print(f"Reference CPU time: {ref_time/1000} ms")

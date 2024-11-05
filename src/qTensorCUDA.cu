@@ -100,12 +100,9 @@ __device__ void print_bitset(cuda_classes::bitset& bits) {
 
 __global__ void contractionKernel(cuda_classes::bitset* bit_addressesA, cuda_classes::bitset* bit_addressesB, cpx* d_valuesA, cpx* d_valuesB, cpx* d_resultValues, size_t rankA, size_t rankB, size_t rankResult, size_t connectionsSize, unsigned char* indexesA_connections, unsigned char* indexesB_connections)
 {
-    // extern __shared__ unsigned char sharedMem[];
     size_t i = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (i >= (1 << (rankResult*2))) return;
-
-    // cuda_classes::bitset address_vacant(0);
 
     #ifdef USE_FLOAT
     cpx value = cuCmulf(d_valuesA[bit_addressesA[i].to_ulong()], d_valuesB[bit_addressesB[i].to_ulong()]);
@@ -119,31 +116,31 @@ __global__ void contractionKernel(cuda_classes::bitset* bit_addressesA, cuda_cla
     for (size_t m = 1; m < (1 << connectionsSize); m++)
     {
         size_t gray_code = m ^ (m >> 1);
-        // if (i == 0) print_bitset(address_vacant);
-        
-        // cuda_classes::bitset address_vacant(m);
-        // size_t cnt = 0;
 
         unsigned int position_vacant =  __ffsll(gray_code ^ old_gray) - 1;
 
         unsigned char indexA = indexesA_connections[position_vacant];
         unsigned char indexB = indexesB_connections[position_vacant];
 
-        // bit_addressesA[i].set(rankA - indexA - 1,   !bit_addressesA[i].get(rankA - indexA - 1));
-        // bit_addressesB[i].set(2*rankB - indexB - 1, !bit_addressesB[i].get(2*rankB - indexB - 1));
-
         bit_addressesA[i].xor_op(1 << (rankA - indexA - 1));
         bit_addressesB[i].xor_op(1 << (2*rankB - indexB - 1));
+        
+        if (i == 0) {
+            printf("m: %d\n", m);
+            printf("gray_code: %d\n", gray_code);
+            printf("old_gray: %d\n", old_gray);
+            printf("position_vacant: %d\n", position_vacant);
+            printf("RankA: %d\n", rankA);
+            printf("RankB: %d\n", rankB);
+            printf("BitAdressA: ");
+            print_bitset(bit_addressesA[i]);
+            printf("BitAdressB: ");
+            print_bitset(bit_addressesB[i]);
+            printf("BitaAdressA: %d\n", bit_addressesA[i].to_ulong());
+            printf("BitaAdressB: %d\n", bit_addressesB[i].to_ulong());
+            printf("Values to multiply: %f + %fj and %f + %fj\n", d_valuesA[bit_addressesA[i].to_ulong()].x, d_valuesA[bit_addressesA[i].to_ulong()].y, d_valuesB[bit_addressesB[i].to_ulong()].x, d_valuesB[bit_addressesB[i].to_ulong()].y);
+        }
 
-        // for (size_t c = 0; c < connectionsSize; c++)
-        // {
-        //     unsigned char indexA = indexesA_connections[c];
-        //     unsigned char indexB = indexesB_connections[c];
-
-        //     bit_addressesA[i].set(rankA - indexA - 1, address_vacant.get(c));
-        //     bit_addressesB[i].set(2*rankB - indexB - 1, address_vacant.get(c));
-        //     // cnt++;
-        // }
         #ifdef USE_FLOAT
         cpx value = cuCmulf(d_valuesA[bit_addressesA[i].to_ulong()], d_valuesB[bit_addressesB[i].to_ulong()]);
         d_resultValues[i] = cuCaddf(d_resultValues[i], value);

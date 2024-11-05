@@ -118,11 +118,12 @@ void printTree(Contraction* root, size_t level = 0) {
     }
 } 
 
-#define DEBUG false
+#define DEBUG true
 
 int main(int argc, char** argv) {
     sqlite3* db;
-    int rc = sqlite3_open("../data/db_ours.sqlite", &db);
+    // int rc = sqlite3_open("../data/db_ours.sqlite", &db);
+    int rc = sqlite3_open("../data/quantum_circuit.db", &db);
     if (rc != SQLITE_OK) {
         std::cerr << "Error opening database: " << sqlite3_errmsg(db) << std::endl;
         sqlite3_close(db);
@@ -148,6 +149,7 @@ int main(int argc, char** argv) {
     if (retrieveData(db, contractions, programId)) {
         if (DEBUG){
         for (const auto& contraction : contractions) {
+            std::cout << "-----------------------------------" << std::endl;
             std::cout << "Contraction: " << contraction.id << std::endl;
             std::cout << "Span: " << contraction.span << std::endl;
             std::cout << "Left ID: " << contraction.leftId << std::endl;
@@ -157,6 +159,7 @@ int main(int argc, char** argv) {
             std::cout << "Data:\n";
             contraction.data.printValues();
             std::cout << std::endl;
+
         }
         }
     }
@@ -168,6 +171,9 @@ int main(int argc, char** argv) {
     // root is last
 
     Contraction* root = contractions.empty() ? nullptr : &contractions.back();
+    if (DEBUG) {
+        printTree(root);
+    }
     chrono::steady_clock::time_point begin = chrono::steady_clock::now();
     #ifdef ENABLE_CUDA
     contractTreeGPU(root);
