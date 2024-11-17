@@ -45,9 +45,10 @@ bool retrieveData(sqlite3* db, std::vector<Contraction>& contractions, int progr
             span_str.erase(0, pos + 1);
         }
         span.push_back(stoi(span_str));
-        auto start = span[0];
-        auto end = span[span.size() - 1];
-        for (unsigned char i = start; i <= end; i++) contraction.span.push_back(i);
+        for (unsigned char i = 0; i < span.size(); i++) { contraction.span.push_back(span[i]); printf("Pushing %d\n", span[i]); }
+        // auto start = span[0];
+        // auto end = span[span.size() - 1];
+        // for (unsigned char i = start; i <= end; i++) { contraction.span.push_back(i); printf("Pushing %d\n", i); }
         // TODO : ------------------------------------------------------ fix implicitly tensor expanded gates
 
         contraction.leftId = sqlite3_column_int(stmt, 3);
@@ -118,7 +119,7 @@ void printTree(Contraction* root, size_t level = 0) {
     }
 } 
 
-#define DEBUG true
+#define DEBUG false
 
 int main(int argc, char** argv) {
     sqlite3* db;

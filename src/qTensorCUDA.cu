@@ -7,6 +7,8 @@
 #include <unordered_map>
 #include <cublas_v2.h>
 
+#define DEBUG false
+
 // using namespace cuda_classes;
 #ifdef USE_FLOAT
 using dtype = float;
@@ -122,10 +124,10 @@ __global__ void contractionKernel(cuda_classes::bitset* bit_addressesA, cuda_cla
         unsigned char indexA = indexesA_connections[position_vacant];
         unsigned char indexB = indexesB_connections[position_vacant];
 
-        bit_addressesA[i].xor_op(1 << (rankA - indexA));
+        bit_addressesA[i].xor_op(1 << (rankA + indexA));
         bit_addressesB[i].xor_op(1 << (indexB));
 
-        if (i == 1) {
+        if (i == 0 && DEBUG) {
             // print indexA
             printf("IndexA: %d\n", indexA);
             // print indexB
@@ -136,6 +138,7 @@ __global__ void contractionKernel(cuda_classes::bitset* bit_addressesA, cuda_cla
             printf("position_vacant: %d\n", position_vacant);
             printf("RankA: %d\n", rankA);
             printf("RankB: %d\n", rankB);
+            printf("ConnectionsSize: %d\n", connectionsSize);
             printf("BitAdressA: ");
             print_bitset(bit_addressesA[i]);
             printf("BitAdressB: ");
@@ -175,7 +178,7 @@ __global__ void compute_bit_address_map(cuda_classes::bitset* bit_addressesA, cu
     
     }
 
-    if (i == 1) {
+    if (i == 0 && DEBUG) {
         printf("BitAdressA: ");
         print_bitset(bit_addressesA[i]);
         printf("BitAdressB: ");
@@ -335,16 +338,6 @@ auto contractTreeGPU_r(Contraction* root) -> void {
 
                 err = cudaMemcpyAsync(d_indexes_connectionsA, indexes_connectionsA, connections.size() * sizeof(unsigned char), cudaMemcpyHostToDevice, root->stream); cuda_err_check(err, __FILE__, __LINE__);
                 err = cudaMemcpyAsync(d_indexes_connectionsB, indexes_connectionsB, connections.size() * sizeof(unsigned char), cudaMemcpyHostToDevice, root->stream); cuda_err_check(err, __FILE__, __LINE__);
-
-                // print d_indexesA
-                for (size_t i = 0; i < root->span.size(); i++) {
-                    std::cout << "d_indexesA[" << i << "]: " << (int)indexesA[i] << std::endl;
-                }
-
-                // print d_indexesB
-                for (size_t i = 0; i < root->span.size(); i++) {
-                    std::cout << "d_indexesB[" << i << "]: " << (int)indexesB[i] << std::endl;
-                }
 
                 double gb_used = (double)(sizeof(cuda_classes::bitset) * nels * 2) / (1024 * 1024 * 1024);
 
