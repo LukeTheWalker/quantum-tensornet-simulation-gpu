@@ -45,7 +45,7 @@ bool retrieveData(sqlite3* db, std::vector<Contraction>& contractions, int progr
             span_str.erase(0, pos + 1);
         }
         span.push_back(stoi(span_str));
-        for (unsigned char i = 0; i < span.size(); i++) { contraction.span.push_back(span[i]); printf("Pushing %d\n", span[i]); }
+        for (unsigned char i = 0; i < span.size(); i++) contraction.span.push_back(span[i]); 
         // auto start = span[0];
         // auto end = span[span.size() - 1];
         // for (unsigned char i = start; i <= end; i++) { contraction.span.push_back(i); printf("Pushing %d\n", i); }
@@ -92,6 +92,77 @@ bool retrieveData(sqlite3* db, std::vector<Contraction>& contractions, int progr
     return true;
 }
 
+// Function to retrieve the unitary matrix from the database as a BLOB
+bool getUnitaryMatrixFromDB(const char* dbName, int programId, std::complex<double>*& unitaryMatrix, int& matrixSize, int& qiskit_unitary_gpu_time){
+    sqlite3* db;
+    sqlite3_stmt* stmt;
+    const char* query = "SELECT unitary_matrix, qiskit_unitary_gpu_time FROM programs WHERE id = ?";
+    
+    // Open SQLite database
+    if (sqlite3_open(dbName, &db) != SQLITE_OK) {
+        std::cerr << "Can't open database: " << sqlite3_errmsg(db) << std::endl;
+        return false;
+    }
+
+    // Prepare the SQL statement
+    if (sqlite3_prepare_v2(db, query, -1, &stmt, nullptr) != SQLITE_OK) {
+        std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
+        sqlite3_close(db);
+        return false;
+    }
+
+    // Bind program ID
+    if (sqlite3_bind_int(stmt, 1, programId) != SQLITE_OK) {
+        std::cerr << "Failed to bind program ID: " << sqlite3_errmsg(db) << std::endl;
+        sqlite3_finalize(stmt);
+        sqlite3_close(db);
+        return false;
+    }
+
+    // Execute query and fetch result
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        const void* blobData = sqlite3_column_blob(stmt, 0);
+        int blobSize = sqlite3_column_bytes(stmt, 0);
+        qiskit_unitary_gpu_time = sqlite3_column_int(stmt, 1);   
+
+        if (blobData && blobSize > 0) {
+            // Assuming the BLOB contains a square matrix of std::complex<dtype>
+            matrixSize = sqrt(blobSize / sizeof(std::complex<double>));  // Calculate size assuming square matrix
+
+            // Allocate memory for the unitary matrix
+            unitaryMatrix = new std::complex<double>[matrixSize * matrixSize];
+
+            // Copy BLOB data into unitaryMatrix
+            memcpy(unitaryMatrix, blobData, blobSize);
+        } else {
+            std::cerr << "No unitary_matrix found or empty." << std::endl;
+            sqlite3_finalize(stmt);
+            sqlite3_close(db);
+            return false;
+        }
+    } else {
+        std::cerr << "No matching row found." << std::endl;
+        sqlite3_finalize(stmt);
+        sqlite3_close(db);
+        return false;
+    }
+
+    // Clean up
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+
+    return true;
+}
+
+// Function to compare two matrices element-wise
+double compareMatrices(const std::complex<double>* mat1, const std::complex<dtype>* mat2, int size) {
+    double norm = 0.0;
+    for (int i = 0; i < size * size; ++i) {
+        norm += std::norm(mat1[i] - (std::complex<double>)mat2[i]);
+    }
+    return sqrt(norm);
+}
+
 ostream& operator<<(ostream& os, const vector<unsigned char>& span) {
     os << "[";
     for (size_t i = 0; i < span.size(); ++i) {
@@ -121,10 +192,12 @@ void printTree(Contraction* root, size_t level = 0) {
 
 #define DEBUG false
 
+string db_name = "../data/qiskit.db";
+
 int main(int argc, char** argv) {
     sqlite3* db;
     // int rc = sqlite3_open("../data/db_ours.sqlite", &db);
-    int rc = sqlite3_open("../data/quantum_circuit.db", &db);
+    int rc = sqlite3_open(db_name.c_str(), &db);
     if (rc != SQLITE_OK) {
         std::cerr << "Error opening database: " << sqlite3_errmsg(db) << std::endl;
         sqlite3_close(db);
@@ -180,11 +253,8 @@ int main(int argc, char** argv) {
     contractTreeGPU(root);
     #endif
     chrono::steady_clock::time_point end = chrono::steady_clock::now();
-    cout << "Time difference = " << (double)chrono::duration_cast<chrono::microseconds>(end - begin).count() / 1000. << "[ms]" << endl;
+    cout << "Time = " << (double)chrono::duration_cast<chrono::microseconds>(end - begin).count() / 1000. << "[ms]" << endl;
     // append the time and the program id to times.csv
-    ofstream times("times.csv", ios::app);
-    times << (double)chrono::duration_cast<chrono::microseconds>(end - begin).count() / 1000. << "," << programId << endl;
-    times.close();
     if (DEBUG){
         for (const auto& contraction : contractions) {
             std::cout << "Contraction: " << contraction.id << std::endl;
@@ -199,10 +269,29 @@ int main(int argc, char** argv) {
         }
     }
 
+    std::complex<double>* dbMatrix = nullptr;  // Matrix from database
+    int dbMatrixSize, qiskit_unitary_gpu_time;
+    auto ok = getUnitaryMatrixFromDB(db_name.c_str(), programId, dbMatrix, dbMatrixSize, qiskit_unitary_gpu_time);
+    if (!ok) {
+        cout << "Error getting unitary matrix from database" << endl;
+        return 1;
+    }
+    auto error = compareMatrices(dbMatrix, (contractions.end()-1)->data.values, dbMatrixSize);
+    cout << "Error: " << error << endl;
+    if (!(error < 1e-3)) {
+        cout << "Unitary matrix does not match the last contraction" << endl;
+    }
     ofstream out("unitary.txt");
     (contractions.end()-1)->data.printValues(out);
     out.close();
 
     sqlite3_close(db);
+
+    ofstream times("times.csv", ios::app);
+    double milliseconds_elapsed = (double)chrono::duration_cast<chrono::milliseconds>(end - begin).count();
+    times << milliseconds_elapsed << "," << qiskit_unitary_gpu_time << "," << qiskit_unitary_gpu_time / milliseconds_elapsed << "," << programId << endl;
+    times.close();
+
+
     return 0;
 }
