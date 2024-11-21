@@ -93,10 +93,10 @@ bool retrieveData(sqlite3* db, std::vector<Contraction>& contractions, int progr
 }
 
 // Function to retrieve the unitary matrix from the database as a BLOB
-bool getUnitaryMatrixFromDB(const char* dbName, int programId, std::complex<double>*& unitaryMatrix, int& matrixSize, int& qiskit_unitary_gpu_time){
+bool getUnitaryMatrixFromDB(const char* dbName, int programId, std::complex<double>*& unitaryMatrix, int& matrixSize, int& qiskit_unitary_gpu_time, int& tree_building_time) {
     sqlite3* db;
     sqlite3_stmt* stmt;
-    const char* query = "SELECT unitary_matrix, qiskit_unitary_gpu_time FROM programs WHERE id = ?";
+    const char* query = "SELECT unitary_matrix, qiskit_unitary_gpu_time_ms, tree_building_time_ms FROM programs WHERE id = ?";
     
     // Open SQLite database
     if (sqlite3_open(dbName, &db) != SQLITE_OK) {
@@ -123,7 +123,8 @@ bool getUnitaryMatrixFromDB(const char* dbName, int programId, std::complex<doub
     if (sqlite3_step(stmt) == SQLITE_ROW) {
         const void* blobData = sqlite3_column_blob(stmt, 0);
         int blobSize = sqlite3_column_bytes(stmt, 0);
-        qiskit_unitary_gpu_time = sqlite3_column_int(stmt, 1);   
+        qiskit_unitary_gpu_time = sqlite3_column_int(stmt, 1);
+        tree_building_time = sqlite3_column_int(stmt, 2);
 
         if (blobData && blobSize > 0) {
             // Assuming the BLOB contains a square matrix of std::complex<dtype>
@@ -270,8 +271,8 @@ int main(int argc, char** argv) {
     }
 
     std::complex<double>* dbMatrix = nullptr;  // Matrix from database
-    int dbMatrixSize, qiskit_unitary_gpu_time;
-    auto ok = getUnitaryMatrixFromDB(db_name.c_str(), programId, dbMatrix, dbMatrixSize, qiskit_unitary_gpu_time);
+    int dbMatrixSize, qiskit_unitary_gpu_time, tree_building_time;
+    auto ok = getUnitaryMatrixFromDB(db_name.c_str(), programId, dbMatrix, dbMatrixSize, qiskit_unitary_gpu_time, tree_building_time);
     if (!ok) {
         cout << "Error getting unitary matrix from database" << endl;
         return 1;
@@ -288,8 +289,8 @@ int main(int argc, char** argv) {
     sqlite3_close(db);
 
     ofstream times("times.csv", ios::app);
-    double milliseconds_elapsed = (double)chrono::duration_cast<chrono::milliseconds>(end - begin).count();
-    times << milliseconds_elapsed << "," << qiskit_unitary_gpu_time << "," << qiskit_unitary_gpu_time / milliseconds_elapsed << "," << programId << endl;
+    double milliseconds_elapsed = (double)chrono::duration_cast<chrono::microseconds>(end - begin).count() / 1000.;
+    times << milliseconds_elapsed << "," << qiskit_unitary_gpu_time << "," << (double)qiskit_unitary_gpu_time / (double)(milliseconds_elapsed + tree_building_time) << "," << tree_building_time  << "," << programId << endl;
     times.close();
 
 
